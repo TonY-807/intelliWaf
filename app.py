@@ -81,14 +81,14 @@ def intercept_request():
         payload=payload[:500], # Trucate long payloads
         detection_result=analysis["attack_type"],
         ml_anomaly=analysis["ml_anomaly"],
-        is_blocked=analysis["is_blocked"],
+        is_blocked=analysis["is_malicious"],
         attack_type=analysis["attack_type"]
     )
     db.session.add(log_entry)
     db.session.commit()
 
     # Block malicious
-    if analysis["is_blocked"]:
+    if analysis["is_malicious"]:
         abort(403, description=f"Malicious {analysis['attack_type']} attack detected and blocked by IntelliWAF.")
 
 # Routes
