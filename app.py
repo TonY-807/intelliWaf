@@ -14,6 +14,9 @@ import requests
 from waf.filter import waf_filter
 
 app = Flask(__name__)
+# Create instance folder if it doesn't exist (required for SQLite)
+os.makedirs(os.path.join(os.getcwd(), 'instance'), exist_ok=True)
+
 # Use environment variables for production security
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', secrets.token_hex(16))
 app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', secrets.token_hex(16))
@@ -51,14 +54,14 @@ class AdminUser(db.Model):
 @app.before_request
 def intercept_request():
     # Don't intercept dashboard related static/API routes to avoid recursive blocking
-    # Also exclude the home page so you can actually see the test center!
     internal_apis = [
         '/api/stats', '/api/logs', '/api/toggle-ml', '/api/set-sensitivity', 
         '/api/train-model', '/api/mark-false-positive', '/api/stats/trends', 
         '/api/threat-intel', '/api/clear-logs'
     ]
+    # Skip assets and common system requests
     if request.path.startswith('/static') or request.path.startswith('/admin') or \
-       request.path in internal_apis:
+       request.path in internal_apis or request.path in ['/favicon.ico', '/robots.txt']:
         return
     # This ensures that / and /login are scanned and logged as normal traffic
 
