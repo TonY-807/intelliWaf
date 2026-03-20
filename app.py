@@ -272,16 +272,18 @@ def search():
     query = request.args.get('q')
     return jsonify({"message": f"Results for: {query}"})
 
+# --- DATABASE INITIALIZATION ---
+# This runs on startup to ensure the DB and Admin exist in production (Gunicorn)
+with app.app_context():
+    # Ensure instance folder exists for SQLite
+    os.makedirs(os.path.join(os.getcwd(), 'instance'), exist_ok=True)
+    db.create_all()
+    # Create a default admin user if missing
+    if not AdminUser.query.filter_by(username='admin').first():
+        hashed_pw = generate_password_hash('password123')
+        db.session.add(AdminUser(username='admin', password=hashed_pw))
+        db.session.commit()
+        print("Production: Database initialized and default admin user created.")
+
 if __name__ == '__main__':
-    with app.app_context():
-        print(f"Current Working Directory: {os.getcwd()}")
-        print(f"Database URI: {app.config['SQLALCHEMY_DATABASE_URI']}")
-        db.create_all()
-        print("Database tables created successfully.")
-        # Create a default admin user
-        if not AdminUser.query.filter_by(username='admin').first():
-            hashed_pw = generate_password_hash('password123')
-            db.session.add(AdminUser(username='admin', password=hashed_pw))
-            db.session.commit()
-            print("Default admin user created.")
     app.run(debug=True, port=5000)
