@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IntelliWAF | Cyber Security Operations Center</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=JetBrains+Mono&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root { 
+            --primary: #4facfe; --secondary: #00f2fe; --bg: #0b1120; --card-bg: #1e293b; 
+            --text: #f8fafc; --text-dim: #94a3b8; --danger: #ef4444; --success: #22c55e; 
+            --warning: #f59e0b; --crit: #ff0055; --glow: rgba(79, 172, 254, 0.4);
+        }
+        * { margin:0; padding:0; box-sizing: border-box; font-family: 'Outfit', sans-serif; }
+        body { background: var(--bg); color: var(--text); display: flex; min-height: 100vh; overflow: hidden; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        
+        /* Sidebar */
+        .sidebar { width: 280px; background: #0f172a; border-right: 1px solid rgba(255,255,255,0.05); padding: 30px 0; display: flex; flex-direction: column; flex-shrink: 0; z-index: 100; }
+        .logo { padding: 0 30px 40px; font-size: 1.6rem; font-weight: 700; letter-spacing: -1px; background: linear-gradient(45deg, var(--primary), var(--secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .nav-item { padding: 15px 30px; display: flex; align-items: center; color: var(--text-dim); text-decoration: none; transition: 0.3s; cursor: pointer; border-left: 4px solid transparent; margin-bottom: 5px; }
+        .nav-item i { margin-right: 15px; font-size: 1.1rem; width: 20px; text-align: center; }
+        .nav-item:hover, .nav-item.active { background: rgba(79, 172, 254, 0.1); color: var(--primary); border-left: 4px solid var(--primary); text-shadow: 0 0 10px var(--glow); }
+        .logout { margin-top: auto; color: var(--danger); opacity: 0.7; }
+        .logout:hover { opacity: 1; background: rgba(239, 68, 68, 0.1); border-color: var(--danger); }
+        
+        /* Main Content */
+        .main { flex:1; padding: 40px; overflow-y: auto; height: 100vh; position: relative; }
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+        .soc-badge { background: rgba(239, 68, 68, 0.1); color: var(--crit); padding: 8px 16px; border-radius: 50px; font-size: 0.75rem; font-weight: 700; border: 1px solid rgba(239, 68, 68, 0.2); text-transform: uppercase; letter-spacing: 1px; animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255, 0, 85, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(255, 0, 85, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 0, 85, 0); } }
+
+        /* Grid System */
+        .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 30px; }
+        .stat-card { background: var(--card-bg); padding: 25px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.05); position: relative; overflow: hidden; }
+        .stat-card::after { content: ''; position: absolute; top:0; left:0; width: 100%; height: 2px; background: linear-gradient(90deg, transparent, var(--primary), transparent); opacity: 0.3; }
+        .stat-card h3 { color: var(--text-dim); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+        .stat-card .value { font-size: 2.2rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+        
+        .main-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 25px; margin-bottom: 25px; }
+        .card { background: var(--card-bg); padding: 25px; border-radius: 24px; border: 1px solid rgba(255,255,255,0.05); height: 100%; transition: 0.3s; }
+        .card:hover { border-color: rgba(79, 172, 254, 0.2); box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+        .card-title { font-size: 1.1rem; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+        
+        /* Section Management */
+        .section { display: none; animation: slideIn 0.4s ease-out; }
+        .section.active { display: block; }
+        @keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+
+        /* Tables & Lists */
+        .table-container { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; }
+        th { text-align: left; color: var(--text-dim); font-size: 0.8rem; padding: 15px; border-bottom: 1px solid rgba(255,255,255,0.05); text-transform: uppercase; }
+        td { padding: 15px; font-size: 0.9rem; border-bottom: 1px solid rgba(255,255,255,0.02); }
+        .badge { padding: 4px 10px; border-radius: 6px; font-weight: 600; font-size: 0.7rem; }
+        .b-crit { background: rgba(255, 0, 85, 0.1); color: var(--crit); border: 1px solid rgba(255, 0, 85, 0.2); }
+        .b-norm { background: rgba(34, 197, 94, 0.1); color: var(--success); }
+        
+        /* Controls */
+        .slider-container { margin: 20px 0; }
+        input[type="range"] { width: 100%; height: 6px; background: #334155; border-radius: 5px; outline: none; appearance: none; }
+        input[type="range"]::-webkit-slider-thumb { appearance: none; width: 18px; height: 18px; background: var(--primary); border-radius: 50%; cursor: pointer; border: 3px solid #0b1120; }
+        
+        .btn { padding: 10px 20px; border-radius: 12px; border: none; font-weight: 600; cursor: pointer; transition: 0.3s; display: flex; align-items: center; gap: 8px; justify-content: center; }
+        .btn-primary { background: linear-gradient(45deg, var(--primary), var(--secondary)); color: #000; }
+        .btn-danger { background: rgba(239, 68, 68, 0.1); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.2); }
+        .btn:hover { transform: scale(1.02); filter: brightness(1.2); }
+        
+        /* Special SOC Elements */
+        #worldMap { height: 250px; background: rgba(0,0,0,0.2); border-radius: 15px; display: flex; align-items: center; justify-content: center; color: var(--text-dim); font-size: 0.8rem; border: 1px dashed rgba(255,255,255,0.1); }
+        .scanline { position: fixed; top:0; left:0; width: 100%; height: 2px; background: rgba(79, 172, 254, 0.05); z-index: 1000; pointer-events: none; animation: scan 8s linear infinite; }
+        @keyframes scan { from { top: 0% } to { top: 100% } }
+
+        .search-bar { width: 100%; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); padding: 12px 15px; border-radius: 12px; color: white; margin-bottom: 20px; outline: none; }
+        .search-bar:focus { border-color: var(--primary); }
+
+        .notification-toggle { display: flex; justify-content: space-between; align-items: center; padding: 15px; background: rgba(0,0,0,0.1); border-radius: 12px; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <div class="scanline"></div>
+    
+    <div class="sidebar">
+        <div class="logo">INTELLIWAF <span style="font-size: 0.6rem; vertical-align: middle; opacity: 0.5;">v2.0</span></div>
+        <a class="nav-item active" onclick="showSection('overview')"><i class="fa-solid fa-terminal"></i> Command Center</a>
+        <a class="nav-item" onclick="showSection('intelligence')"><i class="fa-solid fa-microchip"></i> AI Insight</a>
+        <a class="nav-item" onclick="showSection('explorer')"><i class="fa-solid fa-magnifying-glass-chart"></i> Log Explorer</a>
+        <a class="nav-item" onclick="showSection('alerts')"><i class="fa-solid fa-bell"></i> Alerts & System</a>
+        <a class="nav-item" onclick="showSection('settings')"><i class="fa-solid fa-sliders"></i> Engine Config</a>
+        
+        <a href="/logout" class="nav-item logout"><i class="fa-solid fa-power-off"></i> System Exit</a>
+    </div>
+    
+    <div class="main">
+        <header>
+            <div>
+                <h1 style="font-size: 1.8rem; letter-spacing: -1px;">GLOBAL THREAT DASHBOARD</h1>
+                <p style="color: var(--text-dim); font-size: 0.85rem;">INTELLIGENT FIREWALL OPERATIONAL • <span id="clock">00:00:00</span></p>
+            </div>
+            <div style="display: flex; gap: 15px; align-items: center;">
+                <div id="liveIndicator" style="display: flex; align-items: center; gap: 8px; font-size: 0.7rem; color: var(--success); font-weight: 700;">
+                    <span style="display: inline-block; width: 8px; height: 8px; background: var(--success); border-radius: 50%; box-shadow: 0 0 10px var(--success); animation: blink 1s infinite;"></span>
+                    LIVE STREAMING
+                </div>
+                <div class="soc-badge"><i class="fa-solid fa-shield-virus"></i> Security Level: Alpha</div>
+            </div>
+        </header>
+
+        <!-- Command Center -->
+        <div id="section-overview" class="section active">
+            <div class="stat-grid">
+                <div class="stat-card">
+                    <h3>24h Requests</h3>
+                    <div class="value" id="totalReqs">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Threats Blocked</h3>
+                    <div class="value" id="blockedReqs" style="color: var(--crit);">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>AI Confidence</h3>
+                    <div class="value" style="color: var(--primary);">98.4<span style="font-size: 1rem">%</span></div>
+                </div>
+                <div class="stat-card">
+                    <h3>Live Latency</h3>
+                    <div class="value" style="color: var(--success);">14<span style="font-size: 1rem">ms</span></div>
+                </div>
+            </div>
+
+            <div class="main-grid">
+                <div class="card">
+                    <div class="card-title"><i class="fa-solid fa-wave-square"></i> Real-Time Traffic Flux</div>
+                    <canvas id="trafficChart" height="150"></canvas>
+                </div>
+                <div class="card">
+                    <div class="card-title"><i class="fa-solid fa-map-location-dot"></i> Geo-Origin Matrix</div>
+                    <div id="worldMap">
+                        <div style="text-align: center;">
+                            <i class="fa-solid fa-earth-americas" style="font-size: 3rem; opacity: 0.1; margin-bottom: 10px;"></i><br>
+                            WORLD THREAT MAP<br>
+                            <span style="font-size: 0.6rem;">INTEGRATING GEO-IP DATA...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="main-grid">
+                <div class="card">
+                    <div class="card-title"><i class="fa-solid fa-list-check"></i> Intercepted Payloads</div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr><th>Timestamp</th><th>IP Origin</th><th>Attack Vector</th><th>Severity</th></tr>
+                            </thead>
+                            <tbody id="liveLogBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-title"><i class="fa-solid fa-user-secret"></i> Top Adversaries</div>
+                    <ul id="topIps" style="list-style: none;">
+                        <!-- Top IPs list -->
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- AI Insight Section -->
+        <div id="section-intelligence" class="section">
+            <div class="main-grid">
+                <div class="card">
+                    <div class="card-title"><i class="fa-solid fa-brain"></i> Anomaly Classification</div>
+                    <canvas id="typeChart" height="200"></canvas>
+                </div>
+                <div class="card">
+                    <div class="card-title"><i class="fa-solid fa-robot"></i> ML Engine Health</div>
+                    <div style="text-align: center; padding: 30px;">
+                        <i class="fa-solid fa-vial-circle-check" style="font-size: 4rem; color: var(--primary); margin-bottom: 20px;"></i>
+                        <h3>Model: Isolation Forest</h3>
+                        <p style="color: var(--text-dim); margin-top: 10px;">Status: Optimized</p>
+                        <button class="btn btn-primary" onclick="retrainModel()" style="margin: 20px auto;">Retrain Model</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Log Explorer Section -->
+        <div id="section-explorer" class="section">
+            <div class="card" style="min-height: 500px;">
+                <div class="card-header">
+                    <div class="card-title"><i class="fa-solid fa-database"></i> Database Explorer</div>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn btn-primary" onclick="exportLogs('csv')"><i class="fa-solid fa-file-csv"></i> Export CSV</button>
+                    </div>
+                </div>
+                <input type="text" class="search-bar" id="logSearch" placeholder="Filter by IP, Payload or Attack Type..." oninput="filterLogs()">
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr><th>Time</th><th>IP</th><th>Result</th><th>Vector</th><th>Payload Snippet</th><th>Actions</th></tr>
+                        </thead>
+                        <tbody id="explorerLogBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Alerts Section -->
+        <div id="section-alerts" class="section">
+            <div class="main-grid">
+                <div class="card">
+                    <div class="card-title"><i class="fa-solid fa-envelope-open-text"></i> Notification Channels</div>
+                    <div class="notification-toggle">
+                        <span>Email Alerts (admin@intellidom.com)</span>
+                        <label class="switch"><input type="checkbox" checked><span></span></label>
+                    </div>
+                    <div class="notification-toggle">
+                        <span>Slack Webhook Integration</span>
+                        <label class="switch"><input type="checkbox"><span></span></label>
+                    </div>
+                    <div class="notification-toggle">
+                        <span>Terminal Sound Alerts</span>
+                        <label class="switch"><input type="checkbox" id="soundToggle"><span></span></label>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-title"><i class="fa-solid fa-triangle-exclamation"></i> Critical Incident Log</div>
+                    <div id="criticalLogs" style="font-size: 0.8rem; color: var(--crit); font-family: 'JetBrains Mono';">
+                        <!-- Critical alerts -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Section -->
+        <div id="section-settings" class="section">
+            <div class="card" style="max-width: 600px;">
+                <div class="card-title"><i class="fa-solid fa-gauge-high"></i> WAF Sensitivity</div>
+                <p style="color: var(--text-dim); margin-bottom: 20px;">Adjust the aggressiveness of the Anomaly Detection engine.</p>
+                <div class="slider-container">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 10px; font-weight: 700; font-size: 0.8rem;">
+                        <span style="color: var(--success);">LOW (Silent)</span>
+                        <span style="color: var(--warning);">MEDIUM (Balanced)</span>
+                        <span style="color: var(--crit);">HIGH (Paranoid)</span>
+                    </div>
+                    <input type="range" min="0" max="2" value="1" id="sensitivitySlider" onchange="updateSensitivity()">
+                </div>
+                <div style="margin-top: 40px;">
+                    <div class="card-title"><i class="fa-solid fa-broom"></i> Data Housekeeping</div>
+                    <button class="btn btn-danger" onclick="clearLogs()"><i class="fa-solid fa-trash-can"></i> Purge All Event History</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alert Audio -->
+    <audio id="alertSound" src="https://cdn.freesound.org/previews/235/235911_35187-lq.mp3"></audio>
+
+    <script>
+        let trafficChart, typeChart;
+        let lastLogId = 0;
+        let allLogs = [];
+
+        // UI Helpers
+        function showSection(sectionId) {
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            document.getElementById(`section-${sectionId}`).classList.add('active');
+            
+            document.querySelectorAll('.nav-item').forEach(nav => nav.classList.remove('active'));
+            // Find the clicked element or use the one matching the section
+            const items = document.querySelectorAll('.nav-item');
+            items.forEach(item => {
+                if (item.getAttribute('onclick').includes(`'${sectionId}'`)) {
+                    item.classList.add('active');
+                }
+            });
+            updateDashboard();
+        }
+
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('clock').innerText = now.toLocaleTimeString();
+        }
+        setInterval(updateClock, 1000);
+
+        // API Interactions
+        async function updateDashboard() {
+            try {
+                const stats = await (await fetch('/api/stats')).json();
+                document.getElementById('totalReqs').innerText = stats.total_requests;
+                document.getElementById('blockedReqs').innerText = stats.blocked_requests;
+
+                const trends = await (await fetch('/api/stats/trends')).json();
+                renderTrafficChart(trends);
+
+                const intel = await (await fetch('/api/threat-intel')).json();
+                renderThreatIntel(intel);
+
+                const logs = await (await fetch('/api/logs?limit=50')).json();
+                allLogs = logs;
+                renderLiveLogs(logs.slice(0, 10));
+                renderExplorerLogs(logs);
+                
+                updateAIStats(stats);
+            } catch (e) { console.error(e); }
+        }
+
+        function renderLiveLogs(logs) {
+            const body = document.getElementById('liveLogBody');
+            body.innerHTML = '';
+            logs.forEach(log => {
+                if (log.id > lastLogId && log.is_blocked) {
+                    if (document.getElementById('soundToggle').checked) document.getElementById('alertSound').play();
+                }
+                const sev = log.is_blocked ? 'b-crit' : 'b-norm';
+                body.innerHTML += `<tr>
+                    <td>${log.timestamp.split(' ')[1]}</td>
+                    <td>${log.ip_address}</td>
+                    <td>${log.attack_type}</td>
+                    <td><span class="badge ${sev}">${log.is_blocked ? 'Blocked' : 'Allowed'}</span></td>
+                </tr>`;
+            });
+            if (logs.length > 0) lastLogId = logs[0].id;
+        }
+
+        function renderExplorerLogs(logs) {
+            const body = document.getElementById('explorerLogBody');
+            body.innerHTML = '';
+            logs.forEach(log => {
+                const sev = log.is_blocked ? 'b-crit' : 'b-norm';
+                body.innerHTML += `<tr>
+                    <td>${log.timestamp}</td>
+                    <td style="font-family: monospace;">${log.ip_address}</td>
+                    <td><span class="badge ${sev}">${log.is_blocked ? 'Blocked' : 'Allowed'}</span></td>
+                    <td>${log.attack_type}</td>
+                    <td style="color: var(--text-dim); font-size: 0.7rem; font-family: monospace;">${log.payload.substring(0, 40)}...</td>
+                    <td>
+                        <button class="btn" style="padding: 2px 8px; font-size: 0.6rem; background: rgba(255,255,255,0.05);" onclick="markFalsePositive(${log.id})">Report FP</button>
+                    </td>
+                </tr>`;
+            });
+        }
+
+        function renderThreatIntel(intel) {
+            const list = document.getElementById('topIps');
+            list.innerHTML = '';
+            intel.top_ips.forEach(ip => {
+                list.innerHTML += `<li style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                    <span style="font-family: monospace;">${ip.ip}</span>
+                    <span style="color: var(--crit); font-weight: 700;">${ip.count} attacks</span>
+                </li>`;
+            });
+        }
+
+        function renderTrafficChart(trends) {
+            const ctx = document.getElementById('trafficChart').getContext('2d');
+            if (trafficChart) trafficChart.destroy();
+            trafficChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: trends.timestamps.map(t => new Date(t).toLocaleTimeString()),
+                    datasets: [
+                        { label: 'Total Traffic', data: trends.traffic, borderColor: '#4facfe', tension: 0.4, fill: true, backgroundColor: 'rgba(79, 172, 254, 0.1)' },
+                        { label: 'Attacks', data: trends.attacks, borderColor: '#ef4444', tension: 0.4 }
+                    ]
+                },
+                options: { 
+                    responsive: true, 
+                    scales: { y: { grid: { color: 'rgba(255,255,255,0.05)' }, border: { display: false } }, x: { display: false } },
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
+
+        function updateAIStats(stats) {
+            const ctx = document.getElementById('typeChart').getContext('2d');
+            if (typeChart) typeChart.destroy();
+            typeChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['SQLi', 'XSS', 'ML Anomaly', 'Normal'],
+                    datasets: [{
+                        data: [stats.sqli_count, stats.xss_count, stats.anomaly_count, stats.total_requests - stats.blocked_requests],
+                        backgroundColor: [ '#ef4444', '#4facfe', '#f59e0b', '#22c55e' ],
+                        borderWidth: 0
+                    }]
+                },
+                options: { cutout: '80%', plugins: { legend: { position: 'right', labels: { color: '#94a3b8' } } } }
+            });
+        }
+
+        async function updateSensitivity() {
+            const val = document.getElementById('sensitivitySlider').value;
+            const levels = ['low', 'medium', 'high'];
+            await fetch('/api/set-sensitivity', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ level: levels[val] })
+            });
+        }
+
+        async function retrainModel() {
+            const btn = event.currentTarget;
+            btn.innerText = 'Training...'; btn.disabled = true;
+            const res = await (await fetch('/api/train-model', { method: 'POST' })).json();
+            btn.innerText = 'Retrain Model'; btn.disabled = false;
+            alert(res.status === 'success' ? 'AI Model retrained and redeployed.' : 'Retraining failed.');
+        }
+
+        async function markFalsePositive(id) {
+            await fetch('/api/mark-false-positive', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id })
+            });
+            alert('Marked as false positive. This will help retrain the AI.');
+        }
+
+        function filterLogs() {
+            const query = document.getElementById('logSearch').value.toLowerCase();
+            const filtered = allLogs.filter(l => 
+                l.ip_address.toLowerCase().includes(query) || 
+                l.payload.toLowerCase().includes(query) || 
+                l.attack_type.toLowerCase().includes(query)
+            );
+            renderExplorerLogs(filtered);
+        }
+
+        async function exportLogs(format) {
+            const content = JSON.stringify(allLogs, null, 2);
+            const blob = new Blob([content], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = `waf_logs_${Date.now()}.json`;
+            a.click();
+        }
+
+        async function clearLogs() {
+            if (confirm("Purge all historical logs from database?")) {
+                await fetch('/api/clear-logs', { method: 'POST' });
+                updateDashboard();
+            }
+        }
+
+        setInterval(updateDashboard, 5000);
+        updateDashboard();
+    </script>
+</body>
+</html>
