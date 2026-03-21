@@ -10,11 +10,12 @@ import json
 import secrets
 import requests
 
-# Import WAF Engine
+# --- Initialize Flask App ---
 from waf.filter import waf_filter
-
 app = Flask(__name__)
-# Create instance folder if it doesn't exist (required for SQLite)
+
+# --- Directory Setup ---
+# Create instance folder if it doesn't exist (required for SQLite database storage)
 os.makedirs(os.path.join(os.getcwd(), 'instance'), exist_ok=True)
 
 # Use environment variables for production security
@@ -46,42 +47,56 @@ class RequestLog(db.Model):
     is_false_positive = db.Column(db.Boolean, default=False)
 
 class AdminUser(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(80), unique=True, nullable=False)
     password = db.Column(db.String(120), nullable=False)
+
+class BlockedIP(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    ip_address = db.Column(db.String(45), unique=True, index=True)
+    blocked_at = db.Column(db.DateTime, default=datetime.utcnow)
+    reason = db.Column(db.String(100))
 
 # Intercept every request
 @app.before_request
 def intercept_request():
-    # Don't intercept dashboard related static/API routes to avoid recursive blocking
+    # --- STEP 1: BYPASS LOGIC ---
+    # Don't intercept dashboard related static/API routes to avoid recursive blocking or breaking the UI
     internal_apis = [
         '/api/stats', '/api/logs', '/api/toggle-ml', '/api/set-sensitivity', 
         '/api/train-model', '/api/mark-false-positive', '/api/stats/trends', 
-        '/api/threat-intel', '/api/clear-logs'
+        '/api/threat-intel', '/api/clear-logs', '/api/blocked-ips', '/api/unblock-ip'
     ]
-    # Skip assets and common system requests
+    
+    # Skip assets, admin pages, and common system requests
     if request.path.startswith('/static') or request.path.startswith('/admin') or \
        request.path in internal_apis or request.path in ['/favicon.ico', '/robots.txt']:
         return
-    # This ensures that / and /login are scanned and logged as normal traffic
 
-    # Process through WAF
+    # --- STEP 2: PERMANENCE BLOCK CHECK ---
+    # Check if IP is already permanently blocked in the database
+    already_blocked = BlockedIP.query.filter_by(ip_address=request.remote_addr).first()
+    if already_blocked:
+        abort(403, description=f"Access Denied: Your IP ({request.remote_addr}) has been permanently blocked by IntelliWAF due to repeated malicious activity.")
+
+    # --- STEP 3: WAF ANALYSIS ---
+    # Process the request through the WAF Filtering Engine (Patterns + ML)
     analysis = waf_filter.process_http_request(request)
     
-    # Extract payload (for logging)
+    # Extract payload for logging purposes
     payload = ""
     if request.args:
         payload += f"GET: {json.dumps(dict(request.args))} "
     if request.is_json:
-        payload += f"JSON: {json.dumps(request.json)} "
+        try: payload += f"JSON: {json.dumps(request.json)} "
+        except: pass
     elif request.form:
         payload += f"FORM: {json.dumps(dict(request.form))} "
         
-    # Log request
+    # --- STEP 4: LOGGING ---
+    # Log every single request (normal or malicious) for audit and ML retraining
     log_entry = RequestLog(
         ip_address=request.remote_addr,
         timestamp=datetime.utcnow(),
-        payload=payload[:500], # Trucate long payloads
+        payload=payload[:500], # Truncate long payloads to save DB space
         detection_result=analysis["attack_type"],
         ml_anomaly=analysis["ml_anomaly"],
         is_blocked=analysis["is_malicious"],
@@ -90,9 +105,24 @@ def intercept_request():
     db.session.add(log_entry)
     db.session.commit()
 
-    # Block malicious
+    # --- STEP 5: BLOCKING & AUTO-BAN ---
     if analysis["is_malicious"]:
-        abort(403, description=f"Malicious {analysis['attack_type']} attack detected and blocked by IntelliWAF.")
+        # Count recent attacks from this IP (to implement auto-ban threshold)
+        one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+        recent_attacks = RequestLog.query.filter(
+            RequestLog.ip_address == request.remote_addr,
+            RequestLog.is_blocked == True,
+            RequestLog.timestamp >= one_hour_ago
+        ).count()
+        
+        # If threshold (5 attacks) is met, add to BlockedIP table
+        if recent_attacks >= 5:
+            if not BlockedIP.query.filter_by(ip_address=request.remote_addr).first():
+                db.session.add(BlockedIP(ip_address=request.remote_addr, reason="Auto-blocked: 5+ attacks in 1 hour"))
+                db.session.commit()
+
+        # Send 403 Forbidden response
+        abort(403, description=f"Security Alert: Malicious {analysis['attack_type']} activity detected and dropped by IntelliWAF engine.")
 
 # Routes
 @app.route('/')
@@ -254,6 +284,26 @@ def get_threat_intel():
         "top_ips": [{"ip": ip, "count": count} for ip, count in top_ips],
         "geo_attacks": geo_attacks
     })
+
+@app.route('/api/blocked-ips')
+@limiter.exempt
+def get_blocked_ips():
+    blocked = BlockedIP.query.all()
+    return jsonify([{
+        "id": b.id,
+        "ip_address": b.ip_address,
+        "blocked_at": b.blocked_at.strftime('%Y-%m-%d %H:%M:%S'),
+        "reason": b.reason
+    } for b in blocked])
+
+@app.route('/api/unblock-ip', methods=['POST'])
+def unblock_ip():
+    if not session.get('logged_in'): return abort(401)
+    data = request.json
+    ip = data.get('ip')
+    BlockedIP.query.filter_by(ip_address=ip).delete()
+    db.session.commit()
+    return jsonify({"status": "success"})
 
 @app.route('/api/clear-logs', methods=['POST'])
 def clear_logs():

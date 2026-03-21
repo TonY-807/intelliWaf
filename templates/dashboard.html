@@ -89,6 +89,7 @@
         <a class="nav-item" onclick="showSection('intelligence')"><i class="fa-solid fa-microchip"></i> AI Insight</a>
         <a class="nav-item" onclick="showSection('explorer')"><i class="fa-solid fa-magnifying-glass-chart"></i> Log Explorer</a>
         <a class="nav-item" onclick="showSection('alerts')"><i class="fa-solid fa-bell"></i> Alerts & System</a>
+        <a class="nav-item" onclick="showSection('access')"><i class="fa-solid fa-user-lock"></i> Access Control</a>
         <a class="nav-item" onclick="showSection('settings')"><i class="fa-solid fa-sliders"></i> Engine Config</a>
         
         <a href="/logout" class="nav-item logout"><i class="fa-solid fa-power-off"></i> System Exit</a>
@@ -235,6 +236,21 @@
             </div>
         </div>
 
+        <!-- Access Control Section -->
+        <div id="section-access" class="section">
+            <div class="card">
+                <div class="card-title"><i class="fa-solid fa-user-lock"></i> Permanently Blocked IPs</div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr><th>IP Address</th><th>Blocked At</th><th>Reason</th><th>Actions</th></tr>
+                        </thead>
+                        <tbody id="blockedIpBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
         <!-- Settings Section -->
         <div id="section-settings" class="section">
             <div class="card" style="max-width: 600px;">
@@ -304,8 +320,37 @@
                 renderLiveLogs(logs.slice(0, 10));
                 renderExplorerLogs(logs);
                 
+                const blocked = await (await fetch('/api/blocked-ips')).json();
+                renderBlockedIps(blocked);
+                
                 updateAIStats(stats);
             } catch (e) { console.error(e); }
+        }
+
+        function renderBlockedIps(ips) {
+            const body = document.getElementById('blockedIpBody');
+            body.innerHTML = '';
+            ips.forEach(ip => {
+                body.innerHTML += `<tr>
+                    <td style="font-family: monospace;">${ip.ip_address}</td>
+                    <td>${ip.blocked_at}</td>
+                    <td>${ip.reason}</td>
+                    <td>
+                        <button class="btn btn-primary" style="padding: 5px 12px; font-size: 0.7rem;" onclick="unblockIp('${ip.ip_address}')">Unblock</button>
+                    </td>
+                </tr>`;
+            });
+        }
+
+        async function unblockIp(ip) {
+            if (confirm(`Remove block for IP: ${ip}?`)) {
+                await fetch('/api/unblock-ip', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ip: ip })
+                });
+                updateDashboard();
+            }
         }
 
         function renderLiveLogs(logs) {
